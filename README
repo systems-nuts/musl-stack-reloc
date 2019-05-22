@@ -1,3 +1,9 @@
+    musl libc extension for stack relocation (before main)
+    
+Currently, the runtime stack relocation code supports aarch64 only.
+Used to relocate the aarch64 stack into 47bit of address space. The 
+library should compile for any platform supported by the original
+musl libc.
 
     musl libc
 
