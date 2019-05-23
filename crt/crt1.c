@@ -80,6 +80,15 @@ void _start_c(long *p)
     for (i=0; (auxv[i].a_type != AT_NULL); i++) {
         if (max < (long)auxv[i].a_un.a_val)
             max = (long) auxv[i].a_un.a_val;
+
+	/* check if we need to abort relocation, for example in case of dynamic 
+	 * linking. The key heuristic is to check if the text section is above
+	 * the new stack address -- as we don't relocate the text section, we 
+	 * need to abort.
+	 */
+        if ( (auxv[i].a_type == AT_ENTRY) &&
+	    (auxv[i].a_un.a_val >= STACK_END_ADDR) )
+		goto _abort_relocation;
     }
     /* align max address */
     max = (max & ~(STACK_PAGE_SIZE -1)) + STACK_PAGE_SIZE;
@@ -124,6 +133,8 @@ void _start_c(long *p)
 
     /* unmap previous stack */
     __syscall(SYS_munmap, (max - total_size), total_size);
+
+_abort_relocation:
 #endif /* STACK_RELOC */
 
     /* now continue to normal startup */

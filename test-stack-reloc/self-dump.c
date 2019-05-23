@@ -18,13 +18,13 @@ int main (int argc, char * argv[], char * envp[])
     printf("\n");
     int i;
     for (i=0; i< argc; i++)
-        printf("argv %d at 0x%lx =%s\n",
+        printf("argv %d at 0x%lx %s\n",
             i, (unsigned long)argv[i], argv[i]);
     
     printf("\n");    
     i=0;
     while (envp[i++] != 0)
-        printf("envp %d at 0x%lx =%s\n",
+        printf("envp %d at 0x%lx %s\n",
                i-1, (unsigned long)envp[i-1], envp[i-1]);
     
     printf("\n");
