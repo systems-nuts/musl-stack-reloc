@@ -19,11 +19,13 @@
 
 
 #ifdef STACK_RELOC
+#define _GNU_SOURCE
 #include "stack_arch.h"
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include "syscall.h"
+#include <sys/prctl.h>
 #include <elf.h>
 
 #if ULONG_MAX == 0xffffffff
@@ -51,8 +53,7 @@ void _start_c(long *p)
     char **envp = argv+argc+1;
     Auxv *auxv; 
     int i, copied =-1, size =-1, total_size =-1;
-    long stack_ptr =-1, max =0;
-    void* stack_addr;
+    long stack_ptr =-1, max =0, stack_addr =-1;
 	
     /* ARCH getting the the current stack pointer */
     stack_ptr = arch_stack_get();
@@ -100,7 +101,7 @@ void _start_c(long *p)
 #else
     stack_addr = (void*) __syscall(SYS_mmap, STACK_START_ADDR, STACK_SIZE, PROT_READ|PROT_WRITE, (MAP_PRIVATE|MAP_ANON|MAP_FIXED), -1, 0);
 #endif
-    if ( stack_addr == ((void*)-1) )
+    if ( (long) stack_addr < 0 )
         goto _error;
     memset(stack_addr, STACK_SIZE, 0);     
 #endif
@@ -139,15 +140,20 @@ void _start_c(long *p)
 #endif
     
     /* try mremap */
-    stack_addr = (void *)__syscall(SYS_mremap, (max - total_size), 0, STACK_SIZE, MREMAP_FIXED, STACK_START_ADDR);
-    if ( stack_addr == ((void*)-1))
+    stack_addr = __syscall(SYS_mremap, (max - total_size), total_size, total_size, (MREMAP_FIXED | MREMAP_MAYMOVE), STACK_END_ADDR - total_size);
+    if ( stack_addr < 0)
         goto _error;
   
     /* ARCH stack switch */
     arch_stack_switch(STACK_END_ADDR, size);
 
+#if 0
     /* unmap previous stack */
     __syscall(SYS_munmap, (max - total_size), total_size);
+#endif
+
+    /* tells to the kernel where is the stack */
+    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_START_STACK, (STACK_END_ADDR - total_size), 0, 0);
 
 _abort_relocation:
 #endif /* STACK_RELOC */
