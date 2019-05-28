@@ -92,7 +92,8 @@ void _start_c(long *p)
 	
     /* update expected total mapped size in [stack] */
     total_size = STACK_PAGE_SIZE * (STACK_MAPPED_PAGES + 1 + size/STACK_PAGE_SIZE);
-
+    
+#if 0
     /* get the memory for the stack */
 #ifdef SYS_mmap2
     stack_addr = (void*) __syscall(SYS_mmap2, STACK_START_ADDR, STACK_SIZE, PROT_READ|PROT_WRITE, (MAP_PRIVATE|MAP_ANON|MAP_FIXED), -1, 0);
@@ -102,6 +103,7 @@ void _start_c(long *p)
     if ( stack_addr == ((void*)-1) )
         goto _error;
     memset(stack_addr, STACK_SIZE, 0);     
+#endif
     
     /* rewrite pointers for the new stack */
     for (i=0; i<argc; i++)
@@ -129,9 +131,16 @@ void _start_c(long *p)
     /* update argv pointer with the new address */
     argv = (void*) (STACK_END_ADDR - (max - (unsigned long) argv));
 
+#if 0
     /* ARCH copy of the stack */ //TODO can we use SYS_mremap instead?
     copied = __memcpy_nostack((STACK_END_ADDR -size), stack_ptr, size);
     if (copied != size)
+        goto _error;
+#endif
+    
+    /* try mremap */
+    stack_addr = (void *)__syscall(SYS_mremap, (max - total_size), 0, STACK_SIZE, MREMAP_FIXED, STACK_START_ADDR);
+    if ( stack_addr == ((void*)-1))
         goto _error;
   
     /* ARCH stack switch */
