@@ -26,4 +26,8 @@
 			: :"r" (stack_top), "r" (stack_offset) \
 			: "memory"); })
 
+/* TODO maybe move the following */
 
+//applies to linux only
+
+#define arch_vvar_get_pagesz() (STACK_PAGE_SIZE *1)
