@@ -202,8 +202,10 @@ _malformed_vdso:
                    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ENV_START, envp[0], 0, 0);
                         __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ENV_END,   STACK_END_ADDR -vdso_size, 0, 0);
                             __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_AUXV,      &auxv[0], i*sizeof(Auxv), 0);
-    
 
+	/* mmap protect upper area */
+#define arch_max_addr() (0x1000000000000)			 
+    __syscall(SYS_mmap, STACK_END_ADDR, arch_max_addr() - STACK_END_ADDR, 0, (MAP_PRIVATE|MAP_ANON|MAP_FIXED), -1, 0);
 
     /* ARCH stack switch */
     arch_stack_switch(STACK_END_ADDR -vdso_size, size);
