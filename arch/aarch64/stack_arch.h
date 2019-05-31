@@ -31,3 +31,7 @@
 //applies to linux only
 
 #define arch_vvar_get_pagesz() (STACK_PAGE_SIZE *1)
+
+// per arch/platform (wasn't able to find this anywhere else in the code)
+
+#define arch_vaddr_max() (0x1000000000000)

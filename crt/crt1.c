@@ -5,9 +5,8 @@
 /* The current version supports aarch64 stack relocation, but can compile
  * on any architecture. Support for stack relocation on other architecture is
  * future work. A couple of heurisitcs are used in order to keep code compact.
- * Future versions may try to use mremap instead of creating a new area,
- * copying and unmapping, but also moving [vdso] and [vvar]. Finally, canaries
- * for the stack must be added.
+ * It also relocate the [vdso] and [var], it protects the upper memory so 
+ * malloc cannot use it to allocate anything.
  */
 
 #include <features.h>
@@ -194,18 +193,15 @@ _malformed_vdso:
         goto _error;
 #endif /* !STACK_RELOC_USE_MMAP */
 
-
-/* tells to the kernel where is the stack */
-        __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_START_STACK, (STACK_END_ADDR -vdso_size - total_size), 0, 0);
-            __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ARG_START, argv[0], 0, 0);
-                __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ARG_END,   envp[0], 0, 0);
-                   __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ENV_START, envp[0], 0, 0);
-                        __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ENV_END,   STACK_END_ADDR -vdso_size, 0, 0);
-                            __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_AUXV,      &auxv[0], i*sizeof(Auxv), 0);
+	/* tells to the kernel where is the stack */
+	__syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_START_STACK, (STACK_END_ADDR -vdso_size - total_size), 0, 0);
+	__syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ARG_START, argv[0], 0, 0);
+	__syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ARG_END,   envp[0], 0, 0);
+	__syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ENV_START, envp[0], 0, 0);	
+	__syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ENV_END,   STACK_END_ADDR -vdso_size, 0, 0);                            __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_AUXV,      &auxv[0], i*sizeof(Auxv), 0);
 
 	/* mmap protect upper area */
-#define arch_max_addr() (0x1000000000000)			 
-    __syscall(SYS_mmap, STACK_END_ADDR, arch_max_addr() - STACK_END_ADDR, 0, (MAP_PRIVATE|MAP_ANON|MAP_FIXED), -1, 0);
+    __syscall(SYS_mmap, STACK_END_ADDR, arch_vaddr_max() - STACK_END_ADDR, 0, (MAP_PRIVATE|MAP_ANON|MAP_FIXED), -1, 0);
 
     /* ARCH stack switch */
     arch_stack_switch(STACK_END_ADDR -vdso_size, size);
@@ -214,17 +210,9 @@ _malformed_vdso:
     /* unmap previous stack */
     __syscall(SYS_munmap, (max - total_size), total_size);
 #endif /* STACK_RELOC_USE_MMAP */
-
-
-    /* tells to the kernel where is the stack */
-/*    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_START_STACK, (STACK_END_ADDR - total_size), 0, 0);
-    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ARG_START, argv[0], 0, 0);
-    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ARG_END,   envp[0], 0, 0);
-    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ENV_START, envp[0], 0, 0);
-    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ENV_END,   &auxv[0], 0, 0);
-    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_AUXV,      &auxv[0], i*sizeof(Auxv), 0);
-*/
-
+	
+	/* WARNING here local variables may not work */
+	
 _abort_relocation:
 #endif /* STACK_RELOC */
 
