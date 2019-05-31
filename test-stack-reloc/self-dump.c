@@ -27,25 +27,22 @@ int main (int argc, char * argv[], char * envp[])
     printf("argc %d &argc 0x%lx argv 0x%lx\n",
         argc, (unsigned long)&argc, (unsigned long)argv);
     
-    printf("\n");
     int i;
     for (i=0; i< argc; i++)
         printf("argv %d at 0x%lx %s\n",
             i, (unsigned long)argv[i], argv[i]);
     
-    printf("\n");    
+    printf("\nenvp 0x%lx\n", (unsigned long) envp);
     i=0;
     while (envp[i++] != 0)
         printf("envp %d at 0x%lx %s\n",
                i-1, (unsigned long)envp[i-1], envp[i-1]);
     
-    printf("\n");
     Elf64_Phdr* phdr=0; Elf64_Ehdr* sysinfo_ehdr=0;
-	long phent=0; long phnum=0;
-    Elf64_auxv_t *auxv;
-    printf("sizeof(Elf64_auxv_t) %d\n",
-           (int)sizeof(Elf64_auxv_t));
-    
+    long phent=0; long phnum=0;
+    Elf64_auxv_t *auxv = (Elf64_auxv_t *)&envp[i];
+    printf("\nauxv 0x%lx sizeof(Elf64_auxv_t) %d\n",
+           (unsigned long) auxv, (int)sizeof(Elf64_auxv_t));
     for (auxv = (Elf64_auxv_t *)&envp[i]; auxv->a_type != AT_NULL; auxv++)
         switch (auxv->a_type) {
 			case AT_SYSINFO_EHDR:

@@ -43,6 +43,10 @@ _Noreturn int __libc_start_main(int (*)(), int, char **,
 	void (*)(), void(*)(), void(*)());
 
 
+/* todo ifdef, the followings are scoped to only this file so weak and static */
+//TODO
+
+
 void _start_c(long *p)
 {
 	register int argc = p[0];
@@ -50,10 +54,11 @@ void _start_c(long *p)
 
 #ifdef STACK_RELOC
     /* stack relocation code */
-    char **envp = argv+argc+1;
+    register char **envp = argv+argc+1;
     Auxv *auxv; 
     int i, copied =-1, size =-1, total_size =-1;
-    long stack_ptr =-1, max =0, stack_addr =-1;
+    long stack_ptr =-1, stack_addr =-1;
+    register long max;
 	
     /* ARCH getting the the current stack pointer */
     stack_ptr = arch_stack_get();
@@ -94,17 +99,17 @@ void _start_c(long *p)
     /* update expected total mapped size in [stack] */
     total_size = STACK_PAGE_SIZE * (STACK_MAPPED_PAGES + 1 + size/STACK_PAGE_SIZE);
     
-#if 0
+#if STACK_RELOC_USE_MMAP
     /* get the memory for the stack */
 #ifdef SYS_mmap2
     stack_addr = (void*) __syscall(SYS_mmap2, STACK_START_ADDR, STACK_SIZE, PROT_READ|PROT_WRITE, (MAP_PRIVATE|MAP_ANON|MAP_FIXED), -1, 0);
-#else
+#else /* SYS_mmap2 */
     stack_addr = (void*) __syscall(SYS_mmap, STACK_START_ADDR, STACK_SIZE, PROT_READ|PROT_WRITE, (MAP_PRIVATE|MAP_ANON|MAP_FIXED), -1, 0);
-#endif
+#endif /* !SYS_mmap2 */
     if ( (long) stack_addr < 0 )
         goto _error;
     memset(stack_addr, STACK_SIZE, 0);     
-#endif
+#endif /* STACK_RELOC_USE_MMAP */
     
     /* rewrite pointers for the new stack */
     for (i=0; i<argc; i++)
@@ -129,31 +134,51 @@ void _start_c(long *p)
 	    case AT_HWCAP2:
             break;
         }
-    /* update argv pointer with the new address */
-    argv = (void*) (STACK_END_ADDR - (max - (unsigned long) argv));
+    /* update pointers with the new address */
+    argv = (void*) (STACK_END_ADDR - ((unsigned long)max - (unsigned long) argv));
+    envp = (void*) (STACK_END_ADDR - ((unsigned long)max - (unsigned long) envp));
+    auxv = (void*) (STACK_END_ADDR - ((unsigned long)max - (unsigned long) auxv)); // i includes the number of auxvs
 
-#if 0
+#if STACK_RELOC_USE_MMAP
     /* ARCH copy of the stack */ //TODO can we use SYS_mremap instead?
     copied = __memcpy_nostack((STACK_END_ADDR -size), stack_ptr, size);
     if (copied != size)
         goto _error;
-#endif
-    
+#else /* STACK_RELOC_USE_MMAP */
     /* try mremap */
     stack_addr = __syscall(SYS_mremap, (max - total_size), total_size, total_size, (MREMAP_FIXED | MREMAP_MAYMOVE), STACK_END_ADDR - total_size);
     if ( stack_addr < 0)
         goto _error;
-  
+#endif /* !STACK_RELOC_USE_MMAP */
+
+
+/* tells to the kernel where is the stack */
+        __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_START_STACK, (STACK_END_ADDR - total_size), 0, 0);
+            __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ARG_START, argv[0], 0, 0);
+                __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ARG_END,   envp[0], 0, 0);
+                   __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ENV_START, envp[0], 0, 0);
+                        __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ENV_END,   STACK_END_ADDR, 0, 0);
+                            __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_AUXV,      &auxv[0], i*sizeof(Auxv), 0);
+    
+
+
     /* ARCH stack switch */
     arch_stack_switch(STACK_END_ADDR, size);
 
-#if 0
+#if STACK_RELOC_USE_MMAP
     /* unmap previous stack */
     __syscall(SYS_munmap, (max - total_size), total_size);
-#endif
+#endif /* STACK_RELOC_USE_MMAP */
+
 
     /* tells to the kernel where is the stack */
-    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_START_STACK, (STACK_END_ADDR - total_size), 0, 0);
+/*    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_START_STACK, (STACK_END_ADDR - total_size), 0, 0);
+    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ARG_START, argv[0], 0, 0);
+    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ARG_END,   envp[0], 0, 0);
+    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ENV_START, envp[0], 0, 0);
+    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_ENV_END,   &auxv[0], 0, 0);
+    __syscall(SYS_prctl, PR_SET_MM, PR_SET_MM_AUXV,      &auxv[0], i*sizeof(Auxv), 0);
+*/
 
 _abort_relocation:
 #endif /* STACK_RELOC */
