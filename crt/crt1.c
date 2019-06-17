@@ -47,6 +47,16 @@ _Noreturn int __libc_start_main(int (*)(), int, char **,
 /* todo ifdef, the followings are scoped to only this file so weak and static */
 //TODO
 
+static char *_itoa_b16(char *p, unsigned long x)
+{
+	p += (sizeof(unsigned long)*2) +1;
+	*--p = 0;
+	do {
+		*--p = '0' + x % 16;
+		x /= 16;
+	} while (x);
+	return p;
+}
 
 void _start_c(long *p)
 {
@@ -127,15 +137,17 @@ void _start_c(long *p)
 
         /* remap VVAR and VDSO together at the end of the rebuilt address space */
 	stack_addr = __syscall(SYS_mremap, vvar_base, (base - vvar_base), (base - vvar_base), (MREMAP_FIXED | MREMAP_MAYMOVE), STACK_END_ADDR - (end- vvar_base));
-	if ( stack_addr < 0)
-	  goto _error;
+	if ( ((unsigned long) stack_addr) > -4096UL) {
+		i =1; goto _error;
+	}
 
 	stack_addr = __syscall(SYS_mremap, base, (end - base), (end - base), (MREMAP_FIXED | MREMAP_MAYMOVE), STACK_END_ADDR - (end - base));
-       if ( stack_addr < 0)
-          goto _error;
-	
-        /* update max, size, total size */
-       vdso_size = (end - vvar_base);
+	if ( ((unsigned long) stack_addr) > -4096UL) {
+		i =2; goto _error;
+	}
+
+		/* update max, size, total size */
+		vdso_size = (end - vvar_base);
     }
 _malformed_vdso:
 
@@ -146,9 +158,10 @@ _malformed_vdso:
 #else /* SYS_mmap2 */
     stack_addr = (void*) __syscall(SYS_mmap, STACK_START_ADDR - vdso_size, STACK_SIZE, PROT_READ|PROT_WRITE, (MAP_PRIVATE|MAP_ANON|MAP_FIXED), -1, 0);
 #endif /* !SYS_mmap2 */
-    if ( (long) stack_addr < 0 )
-        goto _error;
-    memset(stack_addr, STACK_SIZE, 0);     
+	if ( ((unsigned long) stack_addr) > -4096UL) {
+		i =3; goto _error;
+	}
+	memset(stack_addr, STACK_SIZE, 0);
 #endif /* STACK_RELOC_USE_MMAP */
     
     /* rewrite pointers for the new stack */
@@ -182,15 +195,17 @@ _malformed_vdso:
     auxv = (void*) (STACK_END_ADDR - vdso_size - ((unsigned long)max - (unsigned long) auxv)); // i includes the number of auxvs
 
 #if STACK_RELOC_USE_MMAP
-    /* ARCH copy of the stack */ //TODO can we use SYS_mremap instead?
-    copied = __memcpy_nostack((STACK_END_ADDR - vdso_size -size), stack_ptr, size);
-    if (copied != size)
-        goto _error;
+	/* ARCH copy of the stack */ //TODO can we use SYS_mremap instead?
+	copied = __memcpy_nostack((STACK_END_ADDR - vdso_size -size), stack_ptr, size);
+	if (copied != size) {
+		i =4; goto _error;
+	}
 #else /* STACK_RELOC_USE_MMAP */
-    /* try mremap */
-    stack_addr = __syscall(SYS_mremap, (max - total_size), total_size, total_size, (MREMAP_FIXED | MREMAP_MAYMOVE), STACK_END_ADDR - vdso_size - total_size);
-    if ( stack_addr < 0)
-        goto _error;
+	/* try mremap */
+	stack_addr = __syscall(SYS_mremap, (max - total_size), total_size, total_size, (MREMAP_FIXED | MREMAP_MAYMOVE), STACK_END_ADDR - vdso_size - total_size);
+	if ( ((unsigned long) stack_addr) > -4096UL) {
+		i =4; goto _error;
+	}
 #endif /* !STACK_RELOC_USE_MMAP */
 
 	/* tells to the kernel where is the stack */
@@ -220,8 +235,17 @@ _abort_relocation:
     __libc_start_main(main, argc, argv, _init, _fini, 0);
 
 #ifdef STACK_RELOC
-    /* we should reach here only in case of errors */
+	/* we should reach here only in case of errors */
 _error:
+{
+	char serror [] = "crt1.c: _start_c error (0)";
+	char verror [(sizeof(unsigned long)*2) +1];
+	serror[24] += i;
+	__syscall(SYS_write, 2, serror, strlen(serror));
+	memset(verror, '0', sizeof(unsigned long)*2) +1);
+	_itoa_b16(verror, (unsigned long) stack_addr);
+	__syscall(SYS_write, 2, verror, strlen(verror));
+}
     /* from src/exit/_Exit.c */
     //int ec =1;
     __syscall(SYS_exit_group, 1); //ec);
