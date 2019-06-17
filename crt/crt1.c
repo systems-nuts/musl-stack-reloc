@@ -52,7 +52,8 @@ static char *_itoa_b16(char *p, unsigned long x)
 	p += (sizeof(unsigned long)*2) +1;
 	*--p = 0;
 	do {
-		*--p = '0' + x % 16;
+		char c = x % 16;
+		*--p = (c < 10) ? ('0' + c) : ('A' + c -10);
 		x /= 16;
 	} while (x);
 	return p;
@@ -238,13 +239,16 @@ _abort_relocation:
 	/* we should reach here only in case of errors */
 _error:
 {
-	char serror [] = "crt1.c: _start_c error (0)";
+	char serror [] = "crt1.c: _start_c error (0)\n";
 	char verror [(sizeof(unsigned long)*2) +1];
 	serror[24] += i;
 	__syscall(SYS_write, 2, serror, strlen(serror));
-	memset(verror, '0', sizeof(unsigned long)*2) +1);
-	_itoa_b16(verror, (unsigned long) stack_addr);
+	memset(verror, '0', sizeof(unsigned long)*2 +1);
+	_itoa_b16(verror, (unsigned long) max);
 	__syscall(SYS_write, 2, verror, strlen(verror));
+        memset(verror, '0', sizeof(unsigned long)*2 +1);
+        _itoa_b16(verror, (unsigned long) total_size);
+        __syscall(SYS_write, 2, verror, strlen(verror));
 }
     /* from src/exit/_Exit.c */
     //int ec =1;
