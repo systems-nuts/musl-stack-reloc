@@ -44,7 +44,7 @@ _Noreturn int __libc_start_main(int (*)(), int, char **,
 	void (*)(), void(*)(), void(*)());
 
 
-#ifdef STACK_RELOC
+#ifdef STACK_RELOC_DEBUG
 static inline char *_itoa_b16(char *p, unsigned long x)
 {
 	p += (sizeof(unsigned long)*2) +1 +1;
@@ -75,7 +75,7 @@ static inline char *_itoa_b10(char *p, long x)
 		*--p = '-';
 	return p;
 }
-#endif /* STACK_RELOC */
+#endif /* STACK_RELOC_DEBUG */
 
 
 void _start_c(long *p)
