@@ -49,13 +49,32 @@ _Noreturn int __libc_start_main(int (*)(), int, char **,
 
 static char *_itoa_b16(char *p, unsigned long x)
 {
-	p += (sizeof(unsigned long)*2) +1;
+	p += (sizeof(unsigned long)*2) +1 +1;
 	*--p = 0;
+	*--p = '\n';
 	do {
 		char c = x % 16;
-		*--p = (c < 10) ? ('0' + c) : ('A' + c -10);
+		*--p = (c < 10) ? ('0' + c) : ('a' + c -10);
 		x /= 16;
 	} while (x);
+	return p;
+}
+static char *_itoa_b10(char *p, long x)
+{
+	char sign =0;
+        p += 20 +1 +1;
+	*--p = 0;
+	*--p = '\n';
+	if (x < 0) {
+		x *= -1;
+		sign =1;
+	}
+        do {
+		*--p = '0'+ x % 10;
+		x /= 10;
+        } while (x);
+	if (sign)
+		*--p = '-';
 	return p;
 }
 
@@ -72,7 +91,14 @@ void _start_c(long *p)
     long stack_ptr =-1, stack_addr =-1;
     register long max; long vvar_base, vdso_size;
     Ehdr *sysinfo_ehdr;
-	
+
+        char _verror [22];
+			        memset(_verror, '0', sizeof(unsigned long)*2 +1);
+				        _itoa_b16(_verror, (unsigned long) p);
+					        __syscall(SYS_write, 2, _verror, strlen(_verror));
+
+
+
     /* ARCH getting the the current stack pointer */
     stack_ptr = arch_stack_get();
     
@@ -111,10 +137,10 @@ void _start_c(long *p)
     }
     /* align max address */
     max = (max & ~(STACK_PAGE_SIZE -1)) + STACK_PAGE_SIZE;
-    size = ((max - (unsigned long)stack_ptr));
+    size = (max - ((unsigned long)stack_ptr & ~(STACK_PAGE_SIZE -1)) );
 	
     /* update expected total mapped size in [stack] */
-    total_size = STACK_PAGE_SIZE * (STACK_MAPPED_PAGES + 1 + size/STACK_PAGE_SIZE);
+    total_size = STACK_PAGE_SIZE * (STACK_MAPPED_PAGES + size/STACK_PAGE_SIZE);
     
     /* if VDSO is mapped in, let's move it firstly */
     if (sysinfo_ehdr) {
@@ -154,6 +180,9 @@ _malformed_vdso:
 
 #if STACK_RELOC_USE_MMAP
     /* get the memory for the stack */
+
+    //TODO implement the same trick as with mremap (see below)
+
 #ifdef SYS_mmap2
     stack_addr = (void*) __syscall(SYS_mmap2, STACK_START_ADDR - vdso_size, STACK_SIZE, PROT_READ|PROT_WRITE, (MAP_PRIVATE|MAP_ANON|MAP_FIXED), -1, 0);
 #else /* SYS_mmap2 */
@@ -202,9 +231,22 @@ _malformed_vdso:
 		i =4; goto _error;
 	}
 #else /* STACK_RELOC_USE_MMAP */
+__retry_mremap:
 	/* try mremap */
 	stack_addr = __syscall(SYS_mremap, (max - total_size), total_size, total_size, (MREMAP_FIXED | MREMAP_MAYMOVE), STACK_END_ADDR - vdso_size - total_size);
 	if ( ((unsigned long) stack_addr) > -4096UL) {
+		/*
+		 * Here we use another pseudo heuristic from the Linux kernel.
+		 * When execve the kernel mm_init a stack of one page, then 
+		 * in setup_arg_pages it extends it, the extension is 32 pages
+		 * that takes it to 33, however, sometimes is 34 (on aarch64 at 
+		 * least). A motivation for a smaller stack is ulimit. We just
+		 * try to guess the size here.
+		 */
+		if (total_size >  size) {
+			total_size -= STACK_PAGE_SIZE;
+			goto __retry_mremap;
+		}
 		i =4; goto _error;
 	}
 #endif /* !STACK_RELOC_USE_MMAP */
@@ -240,15 +282,57 @@ _abort_relocation:
 _error:
 {
 	char serror [] = "crt1.c: _start_c error (0)\n";
-	char verror [(sizeof(unsigned long)*2) +1];
+	char verror [22];
 	serror[24] += i;
 	__syscall(SYS_write, 2, serror, strlen(serror));
+
 	memset(verror, '0', sizeof(unsigned long)*2 +1);
 	_itoa_b16(verror, (unsigned long) max);
 	__syscall(SYS_write, 2, verror, strlen(verror));
-        memset(verror, '0', sizeof(unsigned long)*2 +1);
+
+	memset(verror, '0', sizeof(unsigned long)*2 +1);
         _itoa_b16(verror, (unsigned long) total_size);
         __syscall(SYS_write, 2, verror, strlen(verror));
+
+        memset(verror, '0', 20);
+        _itoa_b10(verror, (long) stack_addr);
+        __syscall(SYS_write, 2, verror, strlen(verror));
+
+
+        memset(verror, '0', sizeof(unsigned long)*2 +1);
+	        _itoa_b16(verror, (unsigned long) stack_ptr);
+		        __syscall(SYS_write, 2, verror, strlen(verror));
+
+
+	while(1){};
+
+
+	int fd = __syscall(SYS_openat, -100,  "/proc/self/maps", 0);
+	int pipes[2];
+
+        memset(verror, '0', 20);
+        _itoa_b10(verror, (long) fd);
+        __syscall(SYS_write, 2, verror, strlen(verror));
+
+	i = __syscall(SYS_pipe2, pipes, 0);
+
+        memset(verror, '0', 20);
+        _itoa_b10(verror, (long) i);
+        __syscall(SYS_write, 2, verror, strlen(verror));
+
+
+	i = __syscall(SYS_splice, fd, 0, pipes[1], 0, 4096, (1 | 4) );
+
+	        memset(verror, '0', 20);
+		        _itoa_b10(verror, (long) i);
+			        __syscall(SYS_write, 2, verror, strlen(verror));
+
+	i =__syscall(SYS_splice, pipes[0], 0, 2, 0, 4096, (1 | 4) );
+
+	        memset(verror, '0', 20);
+		        _itoa_b10(verror, (long) i);
+			        __syscall(SYS_write, 2, verror, strlen(verror));
+
 }
     /* from src/exit/_Exit.c */
     //int ec =1;
