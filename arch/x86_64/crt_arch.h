@@ -44,7 +44,7 @@ START ": \n"
 		: "=r" (retval) \
 		: "I" (0), "r" (n), \
 		  "r" (dest), "r" (src) \
-		: "r9b", "r8", "memory"); \
+		: "r9", "r8", "memory"); \
 	retval; })
 
 /* comment the following to disable relocation before libc start */

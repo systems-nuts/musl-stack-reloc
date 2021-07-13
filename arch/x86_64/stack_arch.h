@@ -14,6 +14,7 @@
 #define STACK_MB           (1024*1024)
 #define STACK_SIZE         (16*STACK_MB)
 #define STACK_END_ADDR     (0x800000000000 - 4096)
+//in the next version we need to change the above to 0x8000...000 -8192
 
 #define STACK_START_ADDR   (STACK_END_ADDR - STACK_SIZE)
 #define STACK_PAGE_SIZE    (4096)
@@ -23,8 +24,8 @@
 
 
 #define arch_stack_switch(stack_top, stack_offset) \
-	({ __asm__ volatile("subq %1, %0 \n\t" \
-			"movq %0, %%rsp \n\t" \
+	({ __asm__ volatile("sub %1, %0 \n\t" \
+			"mov %0, %%rsp \n\t" \
 			: :"r" (stack_top), "r" (stack_offset) \
 			: "memory"); })
 

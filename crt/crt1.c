@@ -27,6 +27,8 @@
 #include <sys/prctl.h>
 #include <elf.h>
 
+#define STACK_RELOC_PAGE_ALIGN 4
+
 #if ULONG_MAX == 0xffffffff
 typedef Elf32_auxv_t Auxv;
 typedef Elf32_Ehdr Ehdr;
@@ -146,19 +148,28 @@ void _start_c(long *p)
 			first_frame = stack_addr; //initialize first_frame to -1 so that you can check it later
 			break;
 		}
-// TODO PRE Calc padding here
-			
+	//TODO check first_frame?
+	first_frame = first_frame-stack_ptr;
+
+// idea: we put the end of current stack at N*page size Let's say N==4 (see above) -- we move only this frame (we should memset after copying, but let's not do that for the moment)
+//we don't really need to calculate it
+	
+		
 //this is for debugging, we can remove it later of keep it as a define
 //	__asm__ ("nop \n\t nop \n\t": : : "memory" );
 /*	__asm__ volatile ("nop\n\t mov %0, %%rax\n\t mov %1, %%rbx\n\t nop\n\t"
 			: 
 			: "r" ((long)max), "r" ((long)size) 
 			: "rax", "rbx", "memory" );*/
-	__asm__ ("nop \n\t mov %0, %%rax \n\t mov %1, %%rbx \n\t mov %2, %%rcx \n\t nop \n\t": : "r" ((long)max), "r" ((long)size), "r" ((long)first_frame) : "rax", "rbx", "rcx", "memory" );
-/*
+/*	__asm__ ("nop \n\t mov %0, %%rax \n\t mov %1, %%rbx \n\t mov %2, %%rcx \n\t mov %3, %%rdx \n\t nop \n\t": 
+	: "r" ((long)max), "r" ((long)size), "r" ((long)total_size), "r" ((long)first_frame)
+	: "rax", "rbx", "rcx", "rdx", "memory" );
+*/
+	/*
 	TODO: look for _start_c address in the stack up to max (if not found, bho ...) ... it is a case that this is _start_c just because the return address of _start is _start_c ... I am not sure this is always the case, so maybe it is better to look at an address that is just in the same pages of _start ... when we find it bingo! (at least for x86)
 	but then the arguments
-*/	
+DONE???
+	*/	
 	
 
 #ifdef STAC_RELOC_MOVE_VDSO
@@ -200,15 +211,10 @@ _malformed_vdso:
 #endif /* STAC_RELOC_MOVE_VDSO */
 
 /*
-TODO the above is not needed for x86
-TODO we don't need to do mmap for x86
 TODO we may need to remap for x86 movedown of 1 page (or more?) but in that case we must rewrite pointers
-
 ...
-
 after we remap, we need to move down the stack a little bit more for the padding (alignment) <<< for this, we must do memcpy
 */
-
 
 
 /*
@@ -228,7 +234,7 @@ we already checked and this is not working -- so, we need to at max remove a pag
 TODO do it later
 */
 
-//TODO I may think to change this later
+//TODO I may think to change this later -- this is to skip the block relocation of env/aux/args/stack
 	if (STACK_END_ADDR == max)
 		goto _finalize;
 	
@@ -321,16 +327,18 @@ __retry_mremap:
 	
 	
 _finalize:
-//TODO if (CONDITION)
-	
+//TODO if (CONDITION) <<< what condition??? maybe not all code wants to be aligned?
+
 	/* ARCH copy of the stack */ //TODO can we use SYS_mremap instead?
-	copied = __memcpy_nostack((STACK_END_ADDR - vdso_size -size), stack_ptr, size);
-	if (copied != size) {
-		i =4; goto _error;
+	copied = __memcpy_nostack((STACK_END_ADDR - (STACK_RELOC_PAGE_ALIGN*STACK_PAGE_SIZE)),
+						(STACK_END_ADDR - vdso_size -size), 
+							  (long)first_frame );
+	if (copied != first_frame) {
+		i =5; goto _error;
 	}
 	
 	/* ARCH stack switch */
-	arch_stack_switch(STACK_END_ADDR -vdso_size, size);
+	arch_stack_switch(STACK_END_ADDR -vdso_size, (long)size); // ??? TODO must update this
 
 #if STACK_RELOC_USE_MMAP
 	/* unmap previous stack */
