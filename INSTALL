@@ -1,3 +1,10 @@
+Cross Compilation Example
+=========================
+
+./configure CROSS_COMPILE=aarch64-linux-gnu-
+make
+make install
+(This will install the aarch64 libraries atop the host libraries)
 
 Quick Installation Guide for musl libc
 ======================================

@@ -28,6 +28,7 @@
 #include <elf.h>
 
 #define STACK_RELOC_PAGE_ALIGN 4
+#define STACK_RELOC_ALIGN
 
 #if ULONG_MAX == 0xffffffff
 typedef Elf32_auxv_t Auxv;
@@ -36,6 +37,12 @@ typedef Elf32_Ehdr Ehdr;
 typedef Elf64_auxv_t Auxv;
 typedef Elf64_Ehdr Ehdr;
 #endif
+
+#define memlng_nostack(iter, start, end, value) \
+	({for (iter = start; iter <= end; iter++) \
+		if (*(unsigned long*)iter == value) { \
+			break; \
+		}})
 #endif /* STACK_RELOC */
 
 
@@ -91,9 +98,10 @@ void _start_c(long *p)
 	/* stack relocation code */
 	register char **envp = argv+argc+1;
 	Auxv *auxv; 
-	int i, copied =-1, size =-1, total_size =-1;
-	long stack_ptr =-1, stack_addr =-1, stack_ret=-1, first_frame=-1;
+	int i, copied =-1, total_size =-1; //TODO convert total_size to stack_size
+	long stack_ptr =-1, stack_addr =-1, stack_ret=-1, frame_size=-1;
 	register long max; long vvar_base =0, vdso_size =0;
+#define max_size(aaa) (max - ((unsigned long)(aaa)))
 	Ehdr *sysinfo_ehdr;
 
 	/* ARCH getting the the current stack pointer */
@@ -133,44 +141,25 @@ void _start_c(long *p)
 				(auxv[i].a_un.a_val >= STACK_END_ADDR) )
 			goto _abort_relocation;
 	}
+	/* NOTE above we may had to add the size of the variable to max, but at the moment it works */
 	
-	/* align max address */
-	// NOTE maybe above we should have add the size of a long
-	max = (max & ~(STACK_PAGE_SIZE -1)) + STACK_PAGE_SIZE; // TODO what is this?
-	size = (max - ((unsigned long)stack_ptr) ); // from stack_ptr to maximum end address // TODO describe this
-/* update expected total mapped size in [stack] */
-	total_size = STACK_PAGE_SIZE * (STACK_MAPPED_PAGES + (size/STACK_PAGE_SIZE) +1); //it is ok to over estimate this
-    
-//the following can be transformed into a macro memcmp_nostack(start, end, value)
-	stack_ret = (unsigned long)__builtin_return_address(0); // to find the first stack frame
-	for (stack_addr =stack_ptr; stack_addr < max; stack_addr++) //addr must be a pointer size
-		if (*(unsigned long*)stack_addr == stack_ret) {
-			first_frame = stack_addr; //initialize first_frame to -1 so that you can check it later
-			break;
-		}
-	//TODO check first_frame?
-	first_frame = first_frame-stack_ptr;
+	/* align max address, highest virtual address */
+	max = (max & ~(STACK_PAGE_SIZE -1)) + STACK_PAGE_SIZE; 
 
-// idea: we put the end of current stack at N*page size Let's say N==4 (see above) -- we move only this frame (we should memset after copying, but let's not do that for the moment)
-//we don't really need to calculate it
+	/* expected total mapped size in [stack], can be overestimated */
+	total_size = STACK_PAGE_SIZE * 
+		(STACK_MAPPED_PAGES + (max_size(stack_ptr)/STACK_PAGE_SIZE) +1);
+
+	/* calculate the size of the first frame by looking at the return address of the current frame that can be obtained with a builtin */
+	stack_ret = (unsigned long)__builtin_return_address(0); // get the address to be matched 
+	memlng_nostack(stack_addr, stack_ptr, max, stack_ret);
+	if (stack_addr != max)
+		frame_size = stack_addr -stack_ptr;
 	
-		
-//this is for debugging, we can remove it later of keep it as a define
-//	__asm__ ("nop \n\t nop \n\t": : : "memory" );
-/*	__asm__ volatile ("nop\n\t mov %0, %%rax\n\t mov %1, %%rbx\n\t nop\n\t"
-			: 
-			: "r" ((long)max), "r" ((long)size) 
-			: "rax", "rbx", "memory" );*/
 /*	__asm__ ("nop \n\t mov %0, %%rax \n\t mov %1, %%rbx \n\t mov %2, %%rcx \n\t mov %3, %%rdx \n\t nop \n\t": 
-	: "r" ((long)max), "r" ((long)size), "r" ((long)total_size), "r" ((long)first_frame)
+	: "r" ((long)max), "r" ((long)max_size(stack_ptr)), "r" ((long)total_size), "r" ((long)frame_size)
 	: "rax", "rbx", "rcx", "rdx", "memory" );
 */
-	/*
-	TODO: look for _start_c address in the stack up to max (if not found, bho ...) ... it is a case that this is _start_c just because the return address of _start is _start_c ... I am not sure this is always the case, so maybe it is better to look at an address that is just in the same pages of _start ... when we find it bingo! (at least for x86)
-	but then the arguments
-DONE???
-	*/	
-	
 
 #ifdef STAC_RELOC_MOVE_VDSO
 	/* if VDSO is mapped in, let's move it firstly */
@@ -178,7 +167,7 @@ DONE???
 		/* VDSO: need to look up the size in the phdr and align it */
 		Elf64_Phdr *ph = (void *)((char *)sysinfo_ehdr + sysinfo_ehdr->e_phoff);
 		size_t base=-1i, end =-1;
-		for (i=0; i<sysinfo_ehdr->e_phnum; i++, ph=(void *)((char *)ph+sysinfo_ehdr->e_phentsize)) {
+		for (i=0; i<sysinfo_ehdr->e_phnum; i++, ph=(void *)((char *)ph+sysinfo_ehdr->e_phentsize)) {si
 			/* so far, kernel version 5.15 there is only one PT_LOAD, this doesn't support more than one */
 			if (ph->p_type == PT_LOAD) {
 				base = (size_t)sysinfo_ehdr + ph->p_offset - ph->p_vaddr;
@@ -211,33 +200,19 @@ _malformed_vdso:
 #endif /* STAC_RELOC_MOVE_VDSO */
 
 /*
-TODO we may need to remap for x86 movedown of 1 page (or more?) but in that case we must rewrite pointers
-...
-after we remap, we need to move down the stack a little bit more for the padding (alignment) <<< for this, we must do memcpy
-*/
-
-
-/*
-// TODO put this below with the other mremap, or use the other 
+TODO in x86_64 need to move the VDSO and VVAR at the very end of the addr space and move the stack down a page (this code can be integrated with the code below -- for the moment we skipped this code
+NOTE the code below is not working, mremap doesn't allow moving to an overlapping area, and allows shrinking only at the end of the memory area (not at beginnning)
 //#ifdef x86
 stack_addr = _syscall(SYS_mremap, (max - total_size), total_size, total_size, (MREMAP_FIXED | MREMAP_MAYMOVE), STACK_END_ADDR - vdso_size - total_size);
 	if ( ((unsigned long) stack_addr) > -4096UL) {
 			i =2; goto _error;
 	}
-	
-	__asm__ ("nop \n\t nop \n\t": : : "memory" );
-	__asm__ ("nop \n\t nop \n\t": : : "memory" );
-	__asm__ ("nop \n\t nop \n\t": : : "memory" );
-	
 //#endif x86
-we already checked and this is not working -- so, we need to at max remove a page
-TODO do it later
 */
 
-//TODO I may think to change this later -- this is to skip the block relocation of env/aux/args/stack
+	/* if the stack is already ending at the right addr, skip this */
 	if (STACK_END_ADDR == max)
 		goto _finalize;
-	
 	
 #if STACK_RELOC_USE_MMAP
     /* allocate the memory to where to move the stack */
@@ -285,8 +260,8 @@ TODO do it later
 
 #if STACK_RELOC_USE_MMAP
 	/* ARCH copy of the stack */ //TODO can we use SYS_mremap instead?
-	copied = __memcpy_nostack((STACK_END_ADDR - vdso_size -size), stack_ptr, size);
-	if (copied != size) {
+	copied = __memcpy_nostack((STACK_END_ADDR - vdso_size -max_size(stack_ptr)), stack_ptr, max_size(stack_ptr));
+	if (copied != max_size(stack_ptr)) {
 		i =4; goto _error;
 	}
 #else /* STACK_RELOC_USE_MMAP */
@@ -302,7 +277,7 @@ __retry_mremap:
 		 * least). Setting ulimit may also end up in a smaller stack. We
 		 * try to guess the size here.
 		 */
-		if (total_size >  size) {
+		if (total_size >  max_size(stack_ptr)) {
 			total_size -= STACK_PAGE_SIZE;
 			goto __retry_mremap;
 		}
@@ -325,21 +300,27 @@ __retry_mremap:
 	__syscall(SYS_mmap, STACK_END_ADDR, arch_vaddr_max() - STACK_END_ADDR, 0, (MAP_PRIVATE|MAP_ANON|MAP_FIXED), -1, 0);
 #endif /* STACK_RELOC_PROTECT */ 
 	
-	
 _finalize:
-//TODO if (CONDITION) <<< what condition??? maybe not all code wants to be aligned?
-
-	/* ARCH copy of the stack */ //TODO can we use SYS_mremap instead?
-	copied = __memcpy_nostack((STACK_END_ADDR - (STACK_RELOC_PAGE_ALIGN*STACK_PAGE_SIZE)),
-						(STACK_END_ADDR - vdso_size -size), 
-							  (long)first_frame );
-	if (copied != first_frame) {
-		i =5; goto _error;
+#ifdef STACK_RELOC_ALIGN
+	/* fail silently if frame_size was not found before */
+	if (frame_size != -1) {
+		/* ARCH copy of the stack */
+		copied = __memcpy_nostack((STACK_END_ADDR - // should we add -vdso???
+						(STACK_RELOC_PAGE_ALIGN*STACK_PAGE_SIZE)),
+						(STACK_END_ADDR - vdso_size -max_size(stack_ptr)), 
+							  (long)frame_size );
+		if (copied != frame_size) {
+			i =5; goto _error;
+		}
 	}
-	
 	/* ARCH stack switch */
-	arch_stack_switch(STACK_END_ADDR -vdso_size, (long)size); // ??? TODO must update this
-
+	arch_stack_switch(STACK_END_ADDR, (long)(STACK_RELOC_PAGE_ALIGN*STACK_PAGE_SIZE)); 
+#else
+	/* ARCH stack switch */
+	arch_stack_switch(STACK_END_ADDR -vdso_size, (long)max_size(stack_ptr));
+#endif /* STACK_RELOC_ALIGN */
+	
+	
 #if STACK_RELOC_USE_MMAP
 	/* unmap previous stack */
 	__syscall(SYS_munmap, (max - total_size), total_size);
@@ -384,4 +365,4 @@ _error:
     for (;;) __syscall(SYS_exit, 1); //ec);
 #endif /* STACK_RELOC */
 }
-
+ 
