@@ -99,7 +99,7 @@ void _start_c(long *p)
 	register char **envp = argv+argc+1;
 	Auxv *auxv; 
 	int i, copied =-1, total_size =-1; //TODO convert total_size to stack_size
-	long stack_ptr =-1, stack_addr =-1, stack_ret=-1, frame_size=-1;
+	long stack_ptr =-1, stack_addr =-1, frame_size=-1; //stack_ret=-1,
 	register long max; long vvar_base =0, vdso_size =0;
 #define max_size(aaa) (max - ((unsigned long)(aaa)))
 	Ehdr *sysinfo_ehdr;
@@ -150,12 +150,19 @@ void _start_c(long *p)
 	total_size = STACK_PAGE_SIZE * 
 		(STACK_MAPPED_PAGES + (max_size(stack_ptr)/STACK_PAGE_SIZE) +1);
 
+	/* size of the current stack, based on argc position, other methods based
+	 * on GCC's __builtin_* do not work on all architectures, therefore this seems
+	 * the most reliable solution
+	 */
+	frame_size = (unsigned long)p - stack_ptr;
+	
+#if 0
 	/* calculate the size of the first frame by looking at the return address of the current frame that can be obtained with a builtin */
 	stack_ret = (unsigned long)__builtin_return_address(0); // get the address to be matched 
 	memlng_nostack(stack_addr, stack_ptr, max, stack_ret);
 	if (stack_addr != max)
 		frame_size = stack_addr -stack_ptr;
-	
+#endif	
 /*	__asm__ ("nop \n\t mov %0, %%rax \n\t mov %1, %%rbx \n\t mov %2, %%rcx \n\t mov %3, %%rdx \n\t nop \n\t": 
 	: "r" ((long)max), "r" ((long)max_size(stack_ptr)), "r" ((long)total_size), "r" ((long)frame_size)
 	: "rax", "rbx", "rcx", "rdx", "memory" );
