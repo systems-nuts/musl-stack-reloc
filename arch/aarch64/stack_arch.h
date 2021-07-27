@@ -18,6 +18,9 @@
 #define STACK_PAGE_SIZE    (4096)
 #define STACK_MAPPED_PAGES (32)
 
+#define STACK_RELOC_PAGE_ALIGN 5
+#define STACK_RELOC_OFFSET 0x40
+
 /* stack relocation arch dep macros */
 
 #define arch_stack_switch(stack_top, stack_offset) \

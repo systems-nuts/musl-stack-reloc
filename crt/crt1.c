@@ -27,7 +27,6 @@
 #include <sys/prctl.h>
 #include <elf.h>
 
-#define STACK_RELOC_PAGE_ALIGN 4
 #define STACK_RELOC_ALIGN
 
 #if ULONG_MAX == 0xffffffff
@@ -168,13 +167,13 @@ void _start_c(long *p)
 	: "rax", "rbx", "rcx", "rdx", "memory" );
 */
 
-#ifdef STAC_RELOC_MOVE_VDSO
+#ifdef STACK_RELOC_MOVE_VDSO
 	/* if VDSO is mapped in, let's move it firstly */
 	if (sysinfo_ehdr) {
 		/* VDSO: need to look up the size in the phdr and align it */
 		Elf64_Phdr *ph = (void *)((char *)sysinfo_ehdr + sysinfo_ehdr->e_phoff);
-		size_t base=-1i, end =-1;
-		for (i=0; i<sysinfo_ehdr->e_phnum; i++, ph=(void *)((char *)ph+sysinfo_ehdr->e_phentsize)) {si
+		size_t base=-1, end =-1;
+		for (i=0; i<sysinfo_ehdr->e_phnum; i++, ph=(void *)((char *)ph+sysinfo_ehdr->e_phentsize)) {
 			/* so far, kernel version 5.15 there is only one PT_LOAD, this doesn't support more than one */
 			if (ph->p_type == PT_LOAD) {
 				base = (size_t)sysinfo_ehdr + ph->p_offset - ph->p_vaddr;
@@ -313,7 +312,7 @@ _finalize:
 	if (frame_size != -1) {
 		/* ARCH copy of the stack */
 		copied = __memcpy_nostack((STACK_END_ADDR - // should we add -vdso???
-						(STACK_RELOC_PAGE_ALIGN*STACK_PAGE_SIZE)),
+						((STACK_RELOC_PAGE_ALIGN*STACK_PAGE_SIZE) +STACK_RELOC_OFFSET)),
 						(STACK_END_ADDR - vdso_size -max_size(stack_ptr)), 
 							  (long)frame_size );
 		if (copied != frame_size) {
@@ -321,7 +320,7 @@ _finalize:
 		}
 	}
 	/* ARCH stack switch */
-	arch_stack_switch(STACK_END_ADDR, (long)(STACK_RELOC_PAGE_ALIGN*STACK_PAGE_SIZE)); 
+	arch_stack_switch(STACK_END_ADDR, (long)((STACK_RELOC_PAGE_ALIGN*STACK_PAGE_SIZE) +STACK_RELOC_OFFSET)); 
 #else
 	/* ARCH stack switch */
 	arch_stack_switch(STACK_END_ADDR -vdso_size, (long)max_size(stack_ptr));
