@@ -18,6 +18,8 @@ START ":\n"
 "	b " START "_c\n"
 );
 
+#define STACK_RELOC_USE_MMAP 1
+
 /* TODO copy more than a byte at the time */
 #define __memcpy_nostack(dest, src, n) \
 	({ unsigned long retval =-1; \
@@ -42,11 +44,31 @@ START ":\n"
 		: "x5", "x4", "memory"); \
 	retval; })
 
+// TODO created a copy to prevent compilation error, but there is probably a better way.
+#define my_memcpy_nostack(dest, src, n) \
+	({ unsigned long retval =-1; \
+	__asm__ volatile(".weak __memcpy_nostack_boom \n" \
+		".weak __memcpy_nostack_boom_exit \n" \
+		".weak __memcpy_nostack_boom_copy \n" \
+		"__memcpy_nostack_boom:" \
+		"mov x4, %1 \n\t" \
+		"cmp %2, x4 \n\t" \
+		"b.le __memcpy_nostack_boom_exit \n" \
+		"__memcpy_nostack_boom_copy:" \
+		"ldrb w5, [%4, x4] \n\t" \
+		"strb w5, [%3, x4] \n\t" \
+		"add x4, x4, #0x1 \n\t" \
+		"cmp %2, x4 \n\t" \
+		"b.gt __memcpy_nostack_boom_copy \n" \
+		"__memcpy_nostack_boom_exit:" \
+		"mov %0, x4 \n\t" \
+		: "=r" (retval) \
+		: "I" (0), "r" (n), \
+		  "r" (dest), "r" (src) \
+		: "x5", "x4", "memory"); \
+	retval; })
+
 /* comment the following to disable relocation before libc start */
 #define STACK_RELOC
 #define STACK_RELOC_MOVE_VDSO
 #define STACK_RELOC_PROTECT
-
-
-
-

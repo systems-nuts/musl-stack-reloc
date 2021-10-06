@@ -47,6 +47,38 @@ START ": \n"
 		: "r9", "r8", "memory"); \
 	retval; })
 
+// TODO created a copy to prevent compilation error, but there is probably a better way.
+#define my_memcpy_nostack(dest, src, n) \
+	({ unsigned long retval =-1; \
+	__asm__ volatile(".weak my_memcpy_nostack \n" \
+		".weak my_memcpy_nostack_error \n" \
+		".weak my_memcpy_nostack_exit \n" \
+		".weak my_memcpy_nostack_copy \n" \
+		"my_memcpy_nostack:" \
+		"cmp %4, %3; \n\t" \
+		"jg my_memcpy_nostack_error; \n" \
+		"push %%r8; \n\t" \
+		"push %%r9; \n\t" \
+		"movq %1, %%r8; \n\t" \
+		"cmp %%r8, %2; \n\t" \
+		"jle my_memcpy_nostack_exit; \n" \
+		"my_memcpy_nostack_copy:" \
+		"movb (%4, %%r8, 1), %%r9b; \n\t" \
+		"movb %%r9b, (%3, %%r8, 1); \n\t" \
+		"inc %%r8; \n\t" \
+		"cmp %%r8, %2; \n\t" \
+		"jg my_memcpy_nostack_copy; \n" \
+		"my_memcpy_nostack_exit:" \
+		"movq %%r8, %0; \n\t" \
+		"pop %%r9; \n\t" \
+		"pop %%r8; \n\t" \
+		"my_memcpy_nostack_error: \n\t" \
+		: "=r" (retval) \
+		: "I" (0), "r" (n), \
+		  "r" (dest), "r" (src) \
+		: "r9", "r8", "memory"); \
+	retval; })
+
 /* comment the following to disable relocation before libc start */
 #define STACK_RELOC
 //in x86_64 we don't move VVAR and VDSO, at least for the moment

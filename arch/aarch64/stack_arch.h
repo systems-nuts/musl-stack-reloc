@@ -19,7 +19,7 @@
 #define STACK_MAPPED_PAGES (32)
 
 #define STACK_RELOC_PAGE_ALIGN 5
-#define STACK_RELOC_OFFSET 0x40
+#define STACK_RELOC_OFFSET 0x00
 
 /* stack relocation arch dep macros */
 

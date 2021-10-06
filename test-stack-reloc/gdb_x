@@ -1,0 +1,4 @@
+b ../crt/crt1.c:153
+b ../crt/crt1.c:154
+b ../crt/crt1.c:158
+r

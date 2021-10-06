@@ -1,2 +1,3 @@
 #!/bin/sh
-/usr/local/musl/bin/musl-gcc -o sd self-dump.c -static -v -g
+../toolchain_x86-64/bin/musl-gcc -o sd self-dump.c -static -v
+
