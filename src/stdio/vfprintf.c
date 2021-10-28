@@ -102,7 +102,7 @@ static const unsigned char states[]['z'-'A'+1] = {
 union arg
 {
 	uintmax_t i;
-	long double f;
+	double f;
 	void *p;
 };
 
@@ -126,7 +126,7 @@ static void pop_arg(union arg *arg, int type, va_list *ap)
 	break; case PDIFF:	arg->i = va_arg(*ap, ptrdiff_t);
 	break; case UIPTR:	arg->i = (uintptr_t)va_arg(*ap, void *);
 	break; case DBL:	arg->f = va_arg(*ap, double);
-	break; case LDBL:	arg->f = va_arg(*ap, long double);
+	break; case LDBL:	arg->f = va_arg(*ap, double);
 	}
 }
 
@@ -177,7 +177,7 @@ static char *fmt_u(uintmax_t x, char *s)
 typedef char compiler_defines_long_double_incorrectly[9-(int)sizeof(long double)];
 #endif
 
-static int fmt_fp(FILE *f, long double y, int w, int p, int fl, int t)
+static int fmt_fp(FILE *f, double y, int w, int p, int fl, int t)
 {
 	uint32_t big[(LDBL_MANT_DIG+28)/29 + 1          // mantissa expansion
 		+ (LDBL_MAX_EXP+LDBL_MANT_DIG+28+8)/9]; // exponent expansion
@@ -211,7 +211,7 @@ static int fmt_fp(FILE *f, long double y, int w, int p, int fl, int t)
 	if (y) e2--;
 
 	if ((t|32)=='a') {
-		long double round = 8.0;
+		double round = 8.0;
 		int re;
 
 		if (t&32) prefix += 9;
@@ -318,8 +318,8 @@ static int fmt_fp(FILE *f, long double y, int w, int p, int fl, int t)
 		x = *d % i;
 		/* Are there any significant digits past j? */
 		if (x || d+1!=z) {
-			long double round = 2/LDBL_EPSILON;
-			long double small;
+			double round = 2/LDBL_EPSILON;
+			double small;
 			if ((*d/i & 1) || (i==1000000000 && d>a && (d[-1]&1)))
 				round += 2;
 			if (x<i/2) small=0x0.8p0;
