@@ -33,7 +33,7 @@
 
 //applies to linux only
 
-#define arch_vvar_get_pagesz() (STACK_PAGE_SIZE *1)
+#define arch_vvar_get_pagesz() (STACK_PAGE_SIZE * 2)
 
 // per arch/platform (wasn't able to find this anywhere else in the code)
 
