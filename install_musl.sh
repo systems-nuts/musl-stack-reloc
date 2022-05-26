@@ -2,32 +2,98 @@
 
 ### Custom script to build musl for the UnASL project
 
-MUSL_SRC=~/musl-stack-reloc
+SCRIPT_DIR=$(dirname $(readlink -f $0))
+MUSL_SRC=${SCRIPT_DIR}
 
-###### FIXME ######
+DEST_DIR_ROOT="${SCRIPT_DIR}/../musl-toolchains"
+DEST_DIR=""
+LLVM_TOOLCHAIN=""
 
-TOOLCHAIN_NAME=llvm-9
-DESTINATION_DIR=~/musl-toolchains/${TOOLCHAIN_NAME}
-X86_TOOLCHAIN_DIR=${DESTINATION_DIR}/x86-64
-ARM_TOOLCHAIN_DIR=${DESTINATION_DIR}/aarch64
+function usage() {
+  echo "Usage :  $0 [options]
 
-LLVM_TOOLCHAIN=/home/nikos/llvm-9/toolchain
+    Options:
+    -d      Destination install directory
+    -c      Root installation directory of LLVM toolchain
+    -h      Display this help message"
+}
+
+while getopts ":hd:c:" opt; do
+  case "${opt}" in
+  d)
+    DEST_DIR=${OPTARG}
+    ;;
+  c)
+    LLVM_TOOLCHAIN=${OPTARG}
+    ;;
+  h)
+    usage
+    exit 0
+    ;;
+  *)
+    echo -e "\n  Option does not exist : OPTARG\n"
+    usage
+    exit 1
+    ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+[[ ! -z ${LLVM_TOOLCHAIN} && ! -e ${LLVM_TOOLCHAIN} ]] &&
+  echo "dir does not exist: ${LLVM_TOOLCHAIN}"
+
+LLVM_BINDIR=$(realpath "${LLVM_TOOLCHAIN}/bin")
+[[ -z ${LLVM_TOOLCHAIN} ]] && LLVM_BINDIR="$(llvm-config --bindir)"
+
+[[ ! -x "${LLVM_BINDIR}/llvm-config" ]] &&
+  echo "LLVM bin directory does not exist" && exit 1
+
+TOOLCHAIN_NAME_TAG="llvm-$(${LLVM_BINDIR}/llvm-config --version)"
+
+[[ -z ${DEST_DIR} ]] && DEST_DIR=${DEST_DIR_ROOT}/${TOOLCHAIN_NAME_TAG}
+
+[[ ! ${DEST_DIR} =~ ^/.* ]] && DEST_DIR=$(pwd)/${DEST_DIR}
+
+X86_NAME_TAG="x86_64"
+AARCH64_NAME_TAG="aarch64"
+
+ARCHS=(
+  ${X86_NAME_TAG}
+  ${AARCH64_NAME_TAG}
+)
+
 CFLAGS="-popcorn-alignment -ffunction-sections -fdata-sections -fomit-frame-pointer"
-#CFLAGS=""
 
-###################
+COMMON_CONFIGURE_OPTIONS=(
+  --enable-optimize
+  --enable-debug
+  --enable-warnings
+  --enable-wrapper=all
+  --disable-shared
+  CC=${LLVM_BINDIR}/clang
+  KERVER=POPCORN_5_2)
 
-cd ${MUSL_SRC}
+pushd ${MUSL_SRC}
 
-rm -rf build_aarch64 build_x86-64
-mkdir -p build_x86-64 build_aarch64 ${X86_TOOLCHAIN_DIR} ${ARM_TOOLCHAIN_DIR} 
+for CUR_ARCH in "${ARCHS[@]}"; do
+  TOOLCHAIN_DIR=${DEST_DIR}/${CUR_ARCH}
+  BUILD_DIR=build_${CUR_ARCH}
 
-cd build_x86-64
-../configure --prefix=${X86_TOOLCHAIN_DIR} --target=x86_64-linux-gnu --enable-optimize --enable-debug --enable-warnings --enable-wrapper=all --disable-shared CC=${LLVM_TOOLCHAIN}/bin/clang CFLAGS="-target x86_64-linux-gnu ${CFLAGS}" KERVER=POPCORN_5_2
-make -j16
-make install
+  rm -rf ${BUILD_DIR}
+  mkdir -p ${BUILD_DIR}
+  mkdir -p ${TOOLCHAIN_DIR}
 
-cd ../build_aarch64
-../configure --prefix=${ARM_TOOLCHAIN_DIR} --target=aarch64-linux-gnu --enable-optimize --enable-debug --enable-warnings --enable-wrapper=all --disable-shared CC=${LLVM_TOOLCHAIN}/bin/clang CFLAGS="-target aarch64-linux-gnu ${CFLAGS}" KERVER=POPCORN_5_2
-make -j16
-make install
+  pushd ${BUILD_DIR}
+
+  ../configure \
+    --prefix=${TOOLCHAIN_DIR} \
+    --target=${CUR_ARCH}-linux-gnu \
+    "${COMMON_CONFIGURE_OPTIONS[@]}" \
+    CFLAGS="-target ${CUR_ARCH}-linux-gnu ${CFLAGS}"
+  [[ $? -ne 0 ]] && echo "configure step failed" && exit 1
+
+  make -j $(nproc) && make install
+  [[ $? -ne 0 ]] && echo "build/install step failed" && exit 1
+
+  popd
+done
