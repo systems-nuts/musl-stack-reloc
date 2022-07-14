@@ -11,16 +11,17 @@
 
 /* stack relocation configuration parameters */
 
+#define STACK_PAGE_SIZE    (4096)
+
 #define STACK_MB           (1024*1024)
 #define STACK_SIZE         (16*STACK_MB)
-#define STACK_END_ADDR     (0x800000000000 - 4096)
+#define STACK_END_ADDR     (0x800000000000 - 1 * STACK_PAGE_SIZE)
 //in the next version we need to change the above to 0x8000...000 -8192
 
 #define STACK_START_ADDR   (STACK_END_ADDR - STACK_SIZE)
-#define STACK_PAGE_SIZE    (4096)
 #define STACK_MAPPED_PAGES (32)
 
-#define STACK_RELOC_PAGE_ALIGN 4
+#define STACK_RELOC_PAGE_ALIGN 2
 #define STACK_RELOC_OFFSET 0x00
 
 /* stack relocation arch dep macros */
