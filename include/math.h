@@ -230,7 +230,7 @@ long double fmodl(long double, long double);
 
 double      frexp(double, int *);
 float       frexpf(float, int *);
-long double frexpl(long double, int *);
+double frexpl(double, int *);
 
 double      hypot(double, double);
 float       hypotf(float, float);
