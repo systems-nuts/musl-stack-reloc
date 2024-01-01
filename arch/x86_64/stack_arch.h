@@ -21,7 +21,7 @@
 #define STACK_START_ADDR   (STACK_END_ADDR - STACK_SIZE)
 #define STACK_MAPPED_PAGES (32)
 
-#define STACK_RELOC_PAGE_ALIGN 2
+#define STACK_RELOC_PAGE_ALIGN 4
 #define STACK_RELOC_OFFSET 0x00
 
 /* stack relocation arch dep macros */
@@ -35,7 +35,7 @@
 
 //applies to linux only
 
-#define arch_vvar_get_pagesz() (STACK_PAGE_SIZE *1)
+#define arch_vvar_get_pagesz() (STACK_PAGE_SIZE * 1)
 
 // per arch/platform (wasn't able to find this anywhere else in the code)
 

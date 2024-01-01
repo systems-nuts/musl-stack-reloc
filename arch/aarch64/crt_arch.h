@@ -71,4 +71,4 @@ START ":\n"
 /* comment the following to disable relocation before libc start */
 #define STACK_RELOC
 #define STACK_RELOC_MOVE_VDSO
-#define STACK_RELOC_PROTECT
+//#define STACK_RELOC_PROTECT
